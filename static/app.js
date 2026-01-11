@@ -159,7 +159,7 @@ class RealtimeDemo {
 
     async connect() {
         try {
-            this.ws = new WebSocket(`ws://localhost:8001/ws/${this.sessionId}`);
+            this.ws = new WebSocket(`wss://live-voice-agent-nine.vercel.app/ws/${this.sessionId}`);
             this.ws.binaryType = 'arraybuffer';
 
             this.ws.onopen = async () => {
