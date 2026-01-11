@@ -1,5 +1,7 @@
 # Voice Agent Open Source Toolkit
 
+Realtime voice agent toolkit—FastAPI backend, agent graph, static demo, and Cartesia-powered custom audio for open-source experimentation.
+
 ## Concept
 An open-source realtime voice assistant that unites a FastAPI WebSocket backend (`main.py`), configurable agent workflows (`agent.py`), and a single-page static UI (`/static`). The stack streams microphone audio to Azure OpenAI’s realtime models, calls Cartesia for TTS, and visualizes the complete lifecycle (conversation, events, metrics) in the browser.
 
