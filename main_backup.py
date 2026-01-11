@@ -56,7 +56,7 @@ from agents.realtime.model import RealtimeModelConfig
 from agents.realtime.model_inputs import RealtimeModelSendRawMessage
 
 # Import Cartesia TTS service
-from cartesia_tts import CartesiaTTS, get_cartesia_tts
+from agent.cartesia_tts import CartesiaTTS, get_cartesia_tts
 
 # Import TwilioHandler class - handle both module and package use cases
 if TYPE_CHECKING:

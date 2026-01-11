@@ -2,7 +2,7 @@ import logging
 import time as _time
 from typing import Optional, AsyncGenerator
 
-from cartesia_tts import CartesiaTTS
+from ..cartesia_tts import CartesiaTTS
 
 logger = logging.getLogger(__name__)
 

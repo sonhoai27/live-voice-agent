@@ -41,7 +41,7 @@ Text input ---------------┘
 
 ## Key components
 
-- **`main.py`** – boots a FastAPI app that mounts `/static`, exposes a `/ws/{session_id}` WebSocket, and manages every realtime session via `RealtimeWebSocketManager`. The manager:
+- **`main.py`** – boots a FastAPI app that mounts `/static`, exposes a `/ws/{session_id}` WebSocket, and manages every realtime session via `RealtimeWebSocketManager` (implementation in `agent/ws/manager.py`, re-exported by `agent/companion.py`). The manager:
   - instantiates `RealtimeRunner` plus a typed `SessionState` for turn/metrics tracking,
   - funnels user speech/text through `send_audio`, `send_user_message`, or `send_client_event`,
   - serializes and dispatches events with `EventDispatcher`, and

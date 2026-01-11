@@ -35,7 +35,7 @@ Text input ---------------┘
 ## Thành phần chính
 
 - `main.py`: FastAPI app + WebSocket endpoint `/ws/{session_id}`.
-- `agent/companion.py`: quản lý session, backpressure, single-writer, TTS streaming.
+- `agent/ws/manager.py`: quản lý session, backpressure, single-writer, TTS streaming (được re-export bởi `agent/companion.py`).
 - `agent/core/dispatcher.py`: xử lý event, cập nhật state/metrics.
 - `agent/core/tts_service.py`: chỉ stream audio chunks (không gửi WS trực tiếp).
 - `static/`: giao diện web demo, VAD, audio worklets.
@@ -60,4 +60,3 @@ Text input ---------------┘
 - Redis (tuỳ chọn): presence registry, rate limit, kick session cross-instance.
 - Kafka (tuỳ chọn): stream analytics/audit, out-of-band.
 - Celery (tuỳ chọn): job nền (billing, lưu transcript, summary).
-
