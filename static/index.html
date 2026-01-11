@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.3), transparent 40%),
+                radial-gradient(circle at 20% 20%, rgba(14, 165, 233, 0.25), transparent 45%),
+                linear-gradient(180deg, #f8fafc 0%, #eef2ff 50%, #e2e8f0 100%);
+            min-height: 100vh;
+            color: #0f172a;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        body::before,
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::before {
+            background: radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.7), transparent 35%);
+            opacity: 0.8;
+        }
+
+        body::after {
+            background: radial-gradient(circle at 80% 10%, rgba(236, 72, 153, 0.4), transparent 45%);
+            opacity: 0.9;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.78);
+            border-radius: 32px;
+            backdrop-filter: blur(26px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .conversation-heading {
+            letter-spacing: 0.35em;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .app-shell {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            width: 1100px;
+            min-width: 1100px;
+        }
+
+        .app-shell main {
+            flex: 1;
+            min-height: 0;
+        }
+
+        .messages-content {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .messages-content::-webkit-scrollbar {
+            display: none;
+        }
+
+        .message {
+            display: flex;
+            width: 100%;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 72%;
+            padding: 0.85rem 1.25rem;
+            border-radius: 20px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .message.user .message-bubble {
+            background: #e0f2fe;
+            color: #0f172a;
+        }
+
+        .message.assistant .message-bubble {
+            background: #fef7ed;
+            color: #1e293b;
+        }
+
+        .message-bubble img {
+            max-width: 220px;
+            border-radius: 14px;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .message-bubble .image-caption {
+            font-size: 0.8rem;
+            color: #475569;
+            margin-top: 0.4rem;
+        }
+
+        .controls {
+            justify-content: space-between;
+        }
+
+        .controls .message-input {
+            background: rgba(241, 248, 255, 0.9);
+            border-radius: 999px;
+            padding: 0.85rem 1.2rem;
+            font-size: 0.95rem;
+            color: #0f172a;
+            transition: box-shadow 0.2s;
+        }
+
+        .controls .message-input::placeholder {
+            color: #94a3b8;
+        }
+
+        .controls .message-input:focus {
+            outline: none;
+        }
+
+        .connect-btn {
+            border-radius: 999px;
+            padding: 0.65rem 1.4rem;
+            font-weight: 600;
+            background: #bfdbfe;
+            color: #0f172a;
+            transition: transform 0.2s ease;
+        }
+
+        .connect-btn.connected {
+            background: #fed7aa;
+        }
+
+        .connect-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .mute-btn {
+            border-radius: 999px;
+            padding: 0.65rem 1.2rem;
+            font-weight: 600;
+            min-width: 135px;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .mute-btn.unmuted {
+            background: #bae6fd;
+            color: #0f172a;
+        }
+
+        .mute-btn.muted {
+            background: #fecdd3;
+            color: #0f172a;
+        }
+
+        .send-btn {
+            border-radius: 999px;
+            padding: 0.65rem 1.6rem;
+            font-weight: 600;
+            background: #bae6fd;
+            color: #0f172a;
+        }
+
+        .send-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .status {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #94a3b8;
+            letter-spacing: 0.08em;
+        }
+
+        .status.connected {
+            color: #16a34a;
+        }
+
+        .status.disconnected {
+            color: #dc2626;
+        }
+
+        .events-content,
+        .tools-content {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .events-content::-webkit-scrollbar,
+        .tools-content::-webkit-scrollbar {
+            display: none;
+        }
+
+        .event {
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .event-header {
+            padding: 0.85rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Space Mono', 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: #0f172a;
+            cursor: pointer;
+        }
+
+        .event-header:hover {
+            background: rgba(240, 249, 255, 0.7);
+        }
+
+        .event-content {
+            padding: 0.85rem 1rem 1.1rem;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #475569;
+            background: rgba(248, 250, 252, 0.9);
+            white-space: pre-wrap;
+        }
+
+        .event-content.collapsed {
+            display: none;
+        }
+
+        .tools-content .event-header.handoff {
+            background: rgba(165, 180, 252, 0.4);
+            border-radius: 20px 20px 0 0;
+        }
+
+        .tools-content .event-header.tool {
+            background: rgba(253, 230, 138, 0.4);
+            border-radius: 20px 20px 0 0;
+        }
+
+        .ghost-btn {
+            padding: 0.45rem 1rem;
+            border-radius: 999px;
+            border: 1px solid rgba(15, 23, 42, 0.2);
+            background: rgba(255, 255, 255, 0.6);
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: #0f172a;
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .ghost-btn:hover {
+            border-color: rgba(15, 23, 42, 0.4);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 1024px) {
+            .glass-panel::after {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-wrap: wrap;
+            }
+
+            .connect-btn {
+                min-width: 110px;
+            }
+        }
+    </style>
+</head>
+
+<body class="relative min-h-screen">
+    <div class="pointer-events-none fixed inset-0 z-0">
+        <div class="absolute -left-16 top-6 w-80 h-80 rounded-full bg-gradient-to-br from-cyan-300/60 to-blue-500/40 blur-[120px] opacity-80"></div>
+        <div class="absolute bottom-0 right-0 w-80 h-80 rounded-full bg-gradient-to-br from-pink-300/60 to-indigo-400/40 blur-[140px] opacity-80"></div>
+    </div>
+
+    <div class="app-shell relative z-10 mx-auto flex min-h-screen flex-col gap-6 px-4 py-6">
+        <header class="glass-panel flex items-center justify-between gap-4 px-6 py-4">
+            <div>
+                <p class="conversation-heading">Realtime Voice Agent</p>
+                <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Realtime Demo</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="hidden text-xs font-semibold uppercase tracking-[0.35em] text-slate-500 sm:inline">Live session</span>
+                <button id="connectBtn" class="connect-btn disconnected">Connect</button>
+            </div>
+        </header>
+
+        <main class="flex flex-1 flex-col gap-6 lg:flex-row">
+            <section class="glass-panel flex flex-1 flex-col overflow-hidden">
+                <div class="px-6 py-4">
+                    <p class="conversation-heading">Conversation</p>
+                    <h2 class="text-xl font-semibold text-slate-900">Voice thread</h2>
+                </div>
+                <div id="messagesContent" class="messages-content px-6 pb-4"></div>
+                <div class="controls flex flex-wrap items-center gap-3 px-6 py-4 bg-white/40">
+                    <button id="muteBtn" class="mute-btn unmuted" disabled>🎤 On</button>
+                    <input id="messageInput" class="message-input flex-1 min-w-[170px]" type="text" placeholder="Type a message..." />
+                    <button id="sendBtn" class="send-btn">Send Text</button>
+                    <span id="status" class="status disconnected">Disconnected</span>
+                </div>
+            </section>
+
+            <div class="flex w-full flex-col gap-5 lg:w-80">
+                <section class="glass-panel flex flex-1 flex-col overflow-hidden">
+                    <div class="events-header flex items-center justify-between px-6 py-4">
+                        <div>
+                            <p class="conversation-heading">Stream</p>
+                            <h3 class="text-lg font-semibold text-slate-900">Event stream</h3>
+                        </div>
+                        <button id="clearEventsBtn" class="ghost-btn">Clear</button>
+                    </div>
+                    <div id="eventsContent" class="events-content px-4 py-3"></div>
+                </section>
+
+                <section class="glass-panel flex flex-1 flex-col overflow-hidden">
+                    <div class="tools-header px-6 py-4">
+                        <p class="conversation-heading">Tools</p>
+                        <h3 class="text-lg font-semibold text-slate-900">Tools &amp; handoffs</h3>
+                    </div>
+                    <div id="toolsContent" class="tools-content px-4 py-3"></div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- VAD Library -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/bundle.min.js"></script>
+    <script src="vad.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
