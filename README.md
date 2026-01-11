@@ -52,6 +52,8 @@ uvicorn main:app --host 0.0.0.0 --port 8001 --ws-max-size 16777216
 
 4. Open `http://localhost:8001` (or hit the static UI via `/static/index.html`). Clicking **Connect** opens a WebSocket session (`ws://localhost:8001/ws/<session_id>`), turns on audio capture, and streams user speech to the realtime agent.
 
+If deploying to Vercel, set the project’s entry point to `server.py` so Vercel imports the FastAPI `app`. The file simply reuses `main.py`’s `app` and also allows local testing with `uvicorn server:app`.
+
 ## Web UI behavior
 
 - **Conversation pane** syncs every `message` event from the server, including transcripts, assistant responses, and media attachments. The UI deduplicates items by `item_id` and updates existing bubbles when history deltas arrive.
