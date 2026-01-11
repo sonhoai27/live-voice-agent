@@ -247,6 +247,9 @@ class EventDispatcher:
             state.metrics["input_tokens"] = input_tokens
             state.metrics["output_tokens"] = output_tokens
             logger.info(f"✅ Usage: In={input_tokens}, Out={output_tokens}, Cost=${cost:.6f}, Total=${state.total_cost:.4f}")
+            
+            if hasattr(self.manager, "on_dispatcher_response_done"):
+                await self.manager.on_dispatcher_response_done(session_id, event)
 
     async def _handle_history_event(self, state: SessionState, event: dict):
         event_type = event.get("type")

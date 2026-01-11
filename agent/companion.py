@@ -216,6 +216,10 @@ class RealtimeWebSocketManager:
             except Exception as e:
                 logger.error(f"Failed to send metrics for session {session_id}: {e}")
 
+    async def on_dispatcher_response_done(self, session_id: str, event: dict[str, Any]) -> None:
+        """Example handler invoked by the dispatcher when a response completes."""
+        logger.info(f"Response done for session {session_id}: {event}")
+
     async def _stream_response(self, session_id: str, transcript: str, websocket: WebSocket) -> None:
         """Spawned background task to stream TTS audio for a session.
 
