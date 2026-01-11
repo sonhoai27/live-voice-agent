@@ -1,7 +1,7 @@
 import asyncio
 from asyncio.log import logger
 import json
-import struct
+from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -22,14 +22,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await manager.connect(websocket, session_id)
     try:
         while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
+            packet: dict[str, Any] = await websocket.receive()
+            if packet.get("type") == "websocket.disconnect":
+                break
+            if packet.get("bytes") is not None:
+                await manager.send_audio(session_id, packet["bytes"])
+                continue
+            if packet.get("text") is None:
+                continue
 
-            if message["type"] == "audio":
-                int16_data = message["data"]
-                audio_bytes = struct.pack(f"{len(int16_data)}h", *int16_data)
+            message = json.loads(packet["text"])
+            msg_type = message.get("type")
+
+            if msg_type == "audio":
+                int16_data = message.get("data") or []
+                audio_bytes = manager.parse_json_int16_audio(int16_data)
                 await manager.send_audio(session_id, audio_bytes)
-            elif message["type"] == "text":
+            elif msg_type == "text":
                 text_content = message.get("text")
                 logger.info("Received text message from client (session %s): %s", session_id, text_content)
                 if text_content:
@@ -40,23 +49,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     }
                     await manager.send_user_message(session_id, user_msg)
                 else:
-                    await websocket.send_text(
-                        json.dumps({"type": "error", "error": "Empty text message."})
-                    )
-            elif message["type"] == "commit_audio":
+                    await manager.send_json(session_id, {"type": "error", "error": "Empty text message."}, drop_if_full=True)
+            elif msg_type == "commit_audio":
                 await manager.send_client_event(session_id, {"type": "input_audio_buffer.commit"})
-            elif message["type"] == "client_vad_speech_start":
+            elif msg_type == "client_vad_speech_start":
                 asyncio.create_task(manager.interrupt(session_id))
-                if session_id in manager.audio_tasks:
-                    manager.audio_tasks[session_id].cancel()
-                    logger.info(
-                        "Cancelled audio task for session %s due to Client VAD",
-                        session_id,
-                    )
-            elif message["type"] == "interrupt":
+                await manager.cancel_tts(session_id)
+            elif msg_type == "interrupt":
                 asyncio.create_task(manager.interrupt(session_id))
 
     except WebSocketDisconnect:
+        pass
+    finally:
         await manager.disconnect(session_id)
 
 

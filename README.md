@@ -2,6 +2,9 @@
 
 Realtime voice agent toolkit—FastAPI backend, agent graph, static demo, and Cartesia-powered custom audio for open-source experimentation.
 
+## Languages
+- Vietnamese: see [README.vi.md](README.vi.md)
+
 ## Concept
 An open-source realtime voice assistant that unites a FastAPI WebSocket backend (`main.py`), configurable agent workflows (`agent.py`), and a single-page static UI (`/static`). The stack streams microphone audio to Azure OpenAI’s realtime models, calls Cartesia for TTS, and visualizes the complete lifecycle (conversation, events, metrics) in the browser.
 
@@ -11,13 +14,38 @@ We designed this repo for community collaboration: the core agent routing is tra
 ## Overview
 This repository wires together an OpenAI-powered realtime voice agent with a lightweight FastAPI backend (`main.py`), a configurable agent layer (`agent.py`), and a single-page frontend (`/static`). The stack lets you capture microphone audio, stream it to Azure OpenAI’s realtime endpoint, play back Cartesia-generated responses, surface tooling/handoff events, and monitor latency metrics inside the browser.
 
+## Architecture
+
+```
+Browser (VAD + recorder) ─┐
+                          ├─> FastAPI WebSocket (/ws/{session_id})
+Text input ---------------┘
+                                  │
+                                  │ (binary audio / JSON control)
+                                  v
+                        RealtimeWebSocketManager
+                         - Connection per session_id
+                         - incoming audio queue (backpressure)
+                         - outgoing writer queue (single WS writer)
+                                  │
+                                  ├─> Azure OpenAI Realtime session
+                                  │     (audio + text events)
+                                  │
+                                  └─> Cartesia TTS stream
+                                        (audio chunks -> writer queue)
+```
+
+- **Single-writer WS**: all outbound sends go through one writer task per session to avoid concurrent sends and event-loop stalls.
+- **Backpressure**: inbound audio and outbound events use bounded queues; deltas/metrics can be dropped when queues are full.
+- **Lazy session**: model session is created only when the first audio/text arrives to reduce idle RAM.
+
 ## Key components
 
 - **`main.py`** – boots a FastAPI app that mounts `/static`, exposes a `/ws/{session_id}` WebSocket, and manages every realtime session via `RealtimeWebSocketManager`. The manager:
   - instantiates `RealtimeRunner` plus a typed `SessionState` for turn/metrics tracking,
   - funnels user speech/text through `send_audio`, `send_user_message`, or `send_client_event`,
   - serializes and dispatches events with `EventDispatcher`, and
-  - kicks off `TTSService`/`CartesiaTTS` streaming (plus helper metrics) whenever `response.output_text.done` arrives.
+  - kicks off `TTSService`/`CartesiaTTS` streaming (plus helper metrics) whenever `response.output_text.done` arrives, via a single outbound writer queue.
 
 - **`agent.py`** – returns the starting triage agent used by the runner. It registers three `RealtimeAgent` instances (`triage_agent`, `faq_agent`, `seat_booking_agent`), wires up simple tools (`faq_lookup_tool`, `update_seat`, `get_weather`), and chains handoffs so the triage agent can delegate or recall specialists depending on the customer goal. Customize this file to adjust instructions, add tools, or swap in a different agent graph.
 
@@ -54,10 +82,32 @@ uvicorn main:app --host 0.0.0.0 --port 8001 --ws-max-size 16777216
 
 If deploying to Vercel, set the project’s entry point to `server.py` so Vercel imports the FastAPI `app`. The file simply reuses `main.py`’s `app` and also allows local testing with `uvicorn server:app`.
 
+## Usage guide (backend)
+
+- **Audio**: prefer sending binary frames over the WebSocket; JSON int16 arrays are supported for compatibility but are heavier.
+- **Text**: send `{ "type": "text", "text": "..." }` to trigger a user message.
+- **Commit audio**: send `{ "type": "commit_audio" }` to flush the model input buffer.
+- **Interrupt**: send `{ "type": "interrupt" }` or `client_vad_speech_start` to stop current playback.
+
+## Optimization checklist
+
+- **Queues**: tune `WS_OUTGOING_MAX` and `WS_INCOMING_AUDIO_MAX` for your expected room count and client throughput.
+- **Drop policy**: treat `response.*.delta` and `metrics` as droppable; keep `response.done`/errors reliable.
+- **Binary audio**: keep audio in binary frames to avoid JSON overhead.
+- **Lazy session**: keep idle rooms lightweight; only create model sessions when needed.
+- **Observability**: add queue depth/loop lag metrics before load testing 10k rooms.
+
+## Development roadmap
+
+- **Scale-out**: run multiple instances behind a sticky load balancer (hash by `session_id`).
+- **Redis (optional)**: presence registry, rate limits, cross-instance control (kick/mute).
+- **Kafka (optional)**: async analytics/audit stream (out-of-band).
+- **Celery (optional)**: background jobs (billing, transcript storage, summaries).
+
 ## Web UI behavior
 
 - **Conversation pane** syncs every `message` event from the server, including transcripts, assistant responses, and media attachments. The UI deduplicates items by `item_id` and updates existing bubbles when history deltas arrive.
-- **VAD + recorder**: `app.js` captures 24 kHz mono audio, forwards Int16 chunks as JSON arrays, and observes client-side VAD events to interrupt playback or rerun the agent.
+- **VAD + recorder**: `app.js` captures 24 kHz mono audio, forwards Int16 chunks as JSON arrays (binary frames are also supported server-side), and observes client-side VAD events to interrupt playback or rerun the agent.
 - **Playback**: assistant TTS chunks are decoded from base64 or raw Int16, aggregated, applied with fade-in/out, and routed through `audio-playback.worklet.js`. Interruptions cancel playback and drop pending chunks.
 - **Metrics panel** shows TTS/LLM/STT latencies, turn duration, token counts, and cost each time the backend emits a `metrics` event.
 - **Tools & events panels** display handoff/tool lifecycle events and the raw event stream for debugging.
@@ -66,11 +116,11 @@ If deploying to Vercel, set the project’s entry point to `server.py` so Vercel
 
 - Swap the starting agent by returning a different `RealtimeAgent` from `get_starting_agent`.
 - Extend `agent.py` by adding more `function_tool` helpers and append them to agent graphs; the front end automatically surfaces `tool_start`/`tool_end` events.
-- The backend uses `SessionState.metrics` to store STT/TTS timing—update `_send_metrics` (lines 200-250) if you need additional telemetry.
+- The backend uses `SessionState.metrics` to store STT/TTS timing—extend metrics emission in `agent/core/dispatcher.py` and `agent/companion.py` if you need additional telemetry.
 - You can mount other static assets or rewrite `index.html` to match your branding; `main.py` already serves `/static` and `index.html` at `/`.
 
 ## Troubleshooting
 
 - If the browser cannot connect, double-check the WebSocket URL/port and make sure `uvicorn` is running.
 - Audio capture fails if `navigator.mediaDevices` is unsupported; use a secure context (HTTPS or `localhost`).
-- Cartesia/RealTime failures show up in the backend logs; look for `self.tts_service.stream_to_websocket` or `RealtimeRunner` errors in `uvicorn` output.
+- Cartesia/RealTime failures show up in the backend logs; look for `TTSService.stream_audio` or `RealtimeRunner` errors in `uvicorn` output.

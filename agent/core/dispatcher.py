@@ -1,8 +1,6 @@
-import json
 import time
 import logging
 from typing import Any, Optional
-from fastapi import WebSocket
 from typing_extensions import assert_never
 
 from agents.realtime.items import RealtimeItem
@@ -144,10 +142,11 @@ class EventDispatcher:
         if hasattr(self, "on_user_turn_completed_hook") and callable(self.on_user_turn_completed_hook):
             await self.on_user_turn_completed_hook(session_id)
 
-    async def dispatch(self, session_id: str, serialized_event: dict[str, Any], websocket: WebSocket):
+    async def dispatch(self, session_id: str, serialized_event: dict[str, Any]) -> list[dict[str, Any]]:
         state = self.manager.session_states.get(session_id)
         if not state:
-            return
+            return []
+        outgoing: list[dict[str, Any]] = []
         event_type = serialized_event.get("type")
         current_time = time.time()
         await self._handle_room_event(state, serialized_event, current_time)
@@ -155,12 +154,16 @@ class EventDispatcher:
         await self._handle_user_event(state, serialized_event, current_time)
         # Extract transcripts from events (STT/LLM) and store on state and current user turn
         await self._handle_transcript_event(state, serialized_event, current_time)
-        await self._handle_conversation_event(state, serialized_event, current_time, websocket, session_id)
+        await self._handle_conversation_event(state, serialized_event, current_time, session_id)
         await self._handle_history_event(state, serialized_event)
         await self._handle_audio_event(state, serialized_event, current_time)
-        await self._handle_interruption(state, serialized_event, session_id, websocket)
-        await self._handle_metrics_event(state, serialized_event, current_time, websocket)
-        await websocket.send_text(json.dumps(serialized_event))
+        interruption_msg = await self._handle_interruption(state, serialized_event, session_id)
+        if interruption_msg:
+            outgoing.append(interruption_msg)
+        metrics_msg = await self._handle_metrics_event(state, serialized_event, current_time)
+        if metrics_msg:
+            outgoing.append(metrics_msg)
+        return outgoing
 
     async def _handle_room_event(self, state: SessionState, event: dict, current_time: float):
         pass
@@ -206,7 +209,7 @@ class EventDispatcher:
                 state.current_user_turn.status = "committed"
             logger.debug(f"User audio committed")
 
-    async def _handle_conversation_event(self, state: SessionState, event: dict, current_time: float, websocket: WebSocket, session_id: str):
+    async def _handle_conversation_event(self, state: SessionState, event: dict, current_time: float, session_id: str):
         event_type = event.get("type")
         logger.debug(f"[_handle_conversation_event] event_type={event_type}")
         if event_type == "response.created":
@@ -286,7 +289,7 @@ class EventDispatcher:
                 except Exception:
                     pass
 
-    async def _handle_interruption(self, state: SessionState, event: dict, session_id: str, websocket: WebSocket):
+    async def _handle_interruption(self, state: SessionState, event: dict, session_id: str) -> Optional[dict[str, Any]]:
         event_type = event.get("type")
         if event_type == "input_audio_buffer.speech_started":
             logger.info(f"Interruption detected for session {session_id}")
@@ -295,9 +298,10 @@ class EventDispatcher:
             if session_id in self.manager.audio_tasks:
                 self.manager.audio_tasks[session_id].cancel()
                 logger.info(f"Cancelled audio task for session {session_id}")
-            await websocket.send_text(json.dumps({"type": "audio_interrupted"}))
+            return {"type": "audio_interrupted"}
+        return None
 
-    async def _handle_metrics_event(self, state: SessionState, event: dict, current_time: float, websocket: WebSocket):
+    async def _handle_metrics_event(self, state: SessionState, event: dict, current_time: float) -> Optional[dict[str, Any]]:
         event_type = event.get("type")
         metrics = state.metrics
         metrics_to_send = {}
@@ -318,4 +322,5 @@ class EventDispatcher:
             if "output_tokens" in metrics:
                 metrics_to_send["output_tokens"] = metrics["output_tokens"]
         if metrics_to_send:
-            await websocket.send_text(json.dumps({"type": "metrics", "data": metrics_to_send}))
+            return {"type": "metrics", "data": metrics_to_send}
+        return None
